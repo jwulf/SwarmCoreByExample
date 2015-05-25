@@ -139,16 +139,11 @@ NewCustomerSwarm = {
       node:"CRMAdapter",
       code:function () {
           var me = this;
-          getCustomerByEmail(this.email,
-            function getCustomerByEmailCallback(err, result) {
-              if (err) {
-                me.error = err;
-                me.swarm("ErrorEndpoint");
-              } else {
-                me.customer = result;
-                me.swarm("Notification");
-              }
-            });
+          var customer = getCustomerByEmail.async(this.email);
+          (function (customer){
+            me.customer = customer;
+            me.swarm("Notification")
+          }).swait(customer);
       }
   },
   Notification:{
@@ -194,7 +189,7 @@ NewCustomerSwarm = {
 ----
 <1> The _vars_ section of a swarm defines its internal properties, used to store and transport information with it on the bus.
 
-The swarm's vars are accessible in its phase code through the object _this_.
+The swarm's vars are accessibl in its phase code through the object _this_.
 
 Let's have a look at the swarm constructor now.
 
@@ -236,27 +231,22 @@ NewCustomerSwarm = {
       this.email = email;
       this.swarm("getCustomerDetails");
   },
-  getCustomerDetails:{ # <1>
-      node:"CRMAdapter", <2>
+    getCustomerDetails:{ # <1>
+      node:"CRMAdapter", # <2>
       code:function () {
-          var me = this;
-          getCustomerByEmail(this.email, <3>
-            function getCustomerByEmailCallback(err, result) {
-              if (err) {
-                me.error = err; <4>
-                me.swarm("ErrorEndpoint");
-              } else {
-                me.customer = result; <5>
-                me.swarm("Notification");
-              }
-            });
+          var me = this; # <3>
+          var customer = getCustomerByEmail.async(this.email); # <4>
+          (function (customer){
+            me.customer = customer;
+            me.swarm("Notification")
+          }).swait(customer); <5>
       }
-  },
+  }
 ----
 <1> Phase Definition block
 <2> Specifies the node to run on. This phase will run on a node that has the CRMAdapter loaded.
-<3> Invokes a function in the adapter running on that node.
-<4> Functions execute in the adapter on the node, so a reference to this is created in the closure.
+<3> Functions execute in the adapter on the node, so a reference to this is created in the closure.
+<4> Invokes a function in the adapter running on that node.
 <5> The result
 
 The _getCustomerDetails_ block is a phase definition. As we saw in the constructor, a swarm phase is invoked by _this.swarm("mySwarmPhaseName")_. You can think of a swarm phase as a method, with a crucial distinction: a swarm phase is executed in a _node_, and the swarm phase definition specifies the node where the phase code will execute.
@@ -265,7 +255,7 @@ A node is a process where an adapter is running. We'll look at adapters shortly.
 
 So when a swarm phase is invoked, the swarm moves to a node where the named adapter is loaded, and then executes the code in the code block.
 
-The code in the phase code block can invoke functions in the adapter. For example, here the swarm invokes the function _getCustomerByEmail_. This is not a function in the swarm's definition. Rather,it is a function in the CRMAdapter. The swarm invokes the _getCustomerByEmail_ function in the CRMAdapter, and passes as arguments the swarm's _email_ property and a callback function to receive the results.
+The code in the phase code block can invoke functions in the adapter. For example, here the swarm invokes the function _getCustomerByEmail_. This is not a function in the swarm's definition. Rather, it is a function in the CRMAdapter. The swarm invokes the _getCustomerByEmail_ function in the CRMAdapter. We need to use _async_ and _swait()_ when calling asynchronous methods in the adapter that return a result via a callback. This is to preserve the execution context of the swarm in the callback.
 
 The results are then stored in the swarm's _customer_ property. Note the use of _me=this_ to reliably have a reference to the swarm in the closure of the callback function.
 
