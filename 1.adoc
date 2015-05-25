@@ -1,0 +1,278 @@
+= SwarmCore By Example =
+:hardbreaks:
+
+Welcome to Swarmcore By Example!
+
+SwarmCore is a light-weight open source Enterprise Service Bus (ESB) that runs on Node.js. SwarmCore is a powerful and flexible framework for developing applications that loosely couple existing services.
+
+I use SwarmCore to integrate the information backbone for my business, a Yoga Academy. Like most businesses today, we use a number of different backend services and cloud service providers to deliver our services and run our business - and we have a particular and definite way that we use these services in our business processes. Our philosophy is that "_any process (that uses an information system) that can be rigorously documented should be documented in code and given to a robot_".
+
+We believe that humans should do what humans are best at: create things and be personal with other people.
+
+== Why ESB ==
+
+An Enterprise Services Bus is an architectural abstraction that brings method to the madness of integrating multiple systems. Rather than hard-coding the integration from your CRM to another database, you code integration of your CRM to the bus, and your database to the bus. Then when you change your database from Amazon RDS to Parse.com, you just code integration of Parse.com to the bus. It puts the integration code for each system in a single place: an adapter to the bus, rather than distributed all over the place.
+
+And having various systems on the bus means that integrating them at a later date is trivial. You might put a notification service on the bus to get notifications from your email system, and then think: "_Wow! This is great - imagine if my website also sent me notifications like this!_"
+
+Having your systems on a bus means that these kinds of synergies become easy to create and to manage.
+
+== Why SwarmCore ==
+
+== This Book ==
+
+== What is Swarming? ==
+
+SwarmCore uses a "swarming" pattern. If you are familiar with traditional ESB or SOA (Services-Oriented Architecture) applications, you will be familiar with the pattern of "_smart people passing dumb messages to each other_". Endpoints in a traditional ESB or SOA application contain all the business process logic as well as mediating access to enterprise data repositories. Applications in the endpoints make all the decisions and the bus is used to pass data messages - just like students in a classroom passing around simple notes to each other.
+
+The Swarming pattern, in contrast, is one of "_bees visiting various trees to get honey, and taking it back to their hive_". Messages in the Swarm pattern are intelligent agents that visit the endpoints they need to collect data, and make decisions based on the data they receive about where they will go next.
+
+Endpoints in the SwarmCore ESB are called _adapters_. Adapters meditate access to enterprise data repositories. Adapters can also create _swarms_.
+
+A _swarm_ is an "intelligent message". It contains logic, written in Javascript.
+
+== Example: A New Customer
+
+Here's an example to help you grasp the difference between the two patterns.
+
+Let's imagine a "New Customer" event in an enterprise - and this is a real case for me. I first encountered SwarmCore while working on the system for my business, Atma Yoga Academy.
+
+We have a cloud-based CRM that has a limited API. When a new customer signs up online, the CRM does not emit an event via the API. However, it does send out a welcome email, and you can bcc an address for that welcome email.
+
+So I created a mail domain to receive these automated emails, and routed it to Mailin - a Node.js mail processor. The Mailin service receives the new customer notification. It can get the email address of the new customer from the email, and trigger an event.
+
+=== Traditional ESB / SOA Pattern ===
+
+In a traditional ESB model, the Mailin service would send a message to another endpoint. Perhaps it's a workflow engine that contains rules about what to do with the new customer event. In that case the message might look something like this:
+[source, javascript]
+
+----
+{
+  target: "Workflow Engine Service",
+  event: "New Customer",
+  data: {
+    customer_email: "newcustomer@example.com"
+    }
+}
+----
+
+The Workflow engine endpoint would receive the message, then invoke the _New Customer_ workflow. This would involve retrieving the complete customer record from the CRM via its API. So the Workflow Engine would request the customer record from the CRM Service endpoint. That message might look like this:
+[source, javascript]
+
+----
+{
+  target: "CRM Service",
+  request: "Customer By Email",
+  data:
+  {
+    email: "newcustomer@example.com"
+  }
+}
+----
+
+The CRM Service Endpoint would then retrieve the information from the CRM API using a similar message pattern, and return the customer data to the Workflow Engine endpoint.
+[source, javascript]
+
+----
+{
+  target: "Workflow Engine",
+  response: "Customer By Email",
+  data:
+  {
+    email: "newcustomer@example.com",
+    firstName: "Joe",
+    lastName: "Bloggs",
+    phone: "555-2576-234"
+  }
+}
+----
+
+The Workflow Engine would then notify someone by sending a message to the Notification endpoint:
+[source, javascript]
+
+----
+{
+  target: "Notification Service",
+  event: "Notify",
+  data:
+  {
+    to: "Customer Services",
+    msg: "Hey, Joe Bloggs just joined us! Give him a call on 555-2576-234"
+  }
+}
+----
+
+This could be all done using an mixture of SOAP messages and via REST interfaces using HTTP POST and GET.
+
+This is an example of "smart people passing dumb messages to each other".
+
+The Workflow Engine is a single repository of business logic, and the main orchestrator of events.
+
+Each Endpoint contains logic and makes decisions about how to deal with the data received in messages. The messages themselves are no more intelligent than phone numbers scribbled on napkins and passed around in a bar.
+
+=== Swarm Pattern ===
+
+In the Swarm pattern, the Mailin service creates a New Customer swarm.
+
+You can think of a swarm as a swarm of bees that visits various trees to collect honey, and you can think of the New Customer swarm as a new customer who walks around our information systems collecting all the information that they need, and letting the people who need to know, know that they are there.
+
+The New Customer swarm looks like this:
+
+.Example New Customer Swarm
+[source, javascript]
+----
+// file: NewCustomerSwarm.js
+
+NewCustomerSwarm = {
+  vars: {
+      email: '',
+      customer: {},
+      error: ''
+  },
+  start:function (email) {
+    // A new customer walks into a bar...
+      console.log("Hi, I'm a new customer!");
+      this.email = email;
+      this.swarm("getCustomerDetails");
+  },
+  getCustomerDetails:{
+      node:"CRMAdapter",
+      code:function () {
+          var me = this;
+          getCustomerByEmail(this.email,
+            function getCustomerByEmailCallback(err, result) {
+              if (err) {
+                me.error = err;
+                me.swarm("ErrorEndpoint");
+              } else {
+                me.customer = result;
+                me.swarm("Notification");
+              }
+            });
+      }
+  },
+  Notification:{
+    node: "NotificationAdapter",
+    code: function(){
+      var customer = this.customer;
+      var msg = 'Hey, ' + customer.firstName + ' ' + customer.lastName + ' just joined us! Give him a call on ' + customer.phone;
+      notifyChannel('newcustomer', msg);
+    }
+  },
+  Error
+}
+
+NewCustomerSwarm ;
+
+----
+
+Let's break it down.
+
+.Defining a swarm
+[source,javascript]
+----
+NewCustomerSwarm = { # <1>
+----
+
+<1> We're defining a new swarm: NewCustomerSwarm.
+
+A swarm has variables, a constructor, and _phases_. Phases are similar to the methods of a class, and we will look at them soon.
+
+As the swarm moves around the bus, the code in its phases are executed in different adapters.
+
+A swarm has its own internal properties to transport information with it and to collect information from the different adapters, and they are defined in the _vars_ section.
+
+.Defining properties of a swarm
+[source, javascript]
+----
+NewCustomerSwarm = {
+    vars: { # <1>
+      email: '',
+      customer: {},
+      error: ''
+  }
+----
+<1> The _vars_ section of a swarm defines its internal properties, used to store and transport information with it on the bus.
+
+The swarm's vars are accessible in its phase code through the object _this_.
+
+Let's have a look at the swarm constructor now.
+
+.Defining a Swarm Constructor
+[source, javascript]
+----
+NewCustomerSwarm = {
+  vars: {
+      email: '',
+      customer: {},
+      error: ''
+  },
+  start:function (email) { # <1>
+    // A new customer walks into a bar...
+      console.log("Hi, I'm a new customer!");
+      this.email = email;
+      this.swarm("getCustomerDetails"); #<2>
+  }
+----
+
+<1> The _start_ block here is a swarm constructor. It takes an arbitrary number of arguments. Typically it is used to populate the swarm with information. Here the constructor takes a client email address and assigns it to the swarm var _email_.
+
+<2> Next, the constructor invokes the swarm's _getCustomerDetails_ phase.
+
+Let's take a look at swarm phases now.
+
+.Defining a Swarm Phase
+[source, javascript]
+----
+NewCustomerSwarm = {
+  vars: {
+      email: '',
+      customer: {},
+      error: ''
+  },
+  start:function (email) {
+    // A new customer walks into a bar...
+      console.log("Hi, I'm a new customer!");
+      this.email = email;
+      this.swarm("getCustomerDetails");
+  },
+  getCustomerDetails:{ # <1>
+      node:"CRMAdapter", <2>
+      code:function () {
+          var me = this;
+          getCustomerByEmail(this.email, <3>
+            function getCustomerByEmailCallback(err, result) {
+              if (err) {
+                me.error = err; <4>
+                me.swarm("ErrorEndpoint");
+              } else {
+                me.customer = result; <5>
+                me.swarm("Notification");
+              }
+            });
+      }
+  },
+----
+<1> Phase Definition block
+<2> Specifies the node to run on. This phase will run on a node that has the CRMAdapter loaded.
+<3> Invokes a function in the adapter running on that node.
+<4> Functions execute in the adapter on the node, so a reference to this is created in the closure.
+<5> The result
+
+The _getCustomerDetails_ block is a phase definition. As we saw in the constructor, a swarm phase is invoked by _this.swarm("mySwarmPhaseName")_. You can think of a swarm phase as a method, with a crucial distinction: a swarm phase is executed in a _node_, and the swarm phase definition specifies the node where the phase code will execute.
+
+A node is a process where an adapter is running. We'll look at adapters shortly. What there is to know about adapters right now is that: they are endpoints in the SwarmESB; they can be running anywhere; and if a swarm is like a bee, an adapter is like a tree.
+
+So when a swarm phase is invoked, the swarm moves to a node where the named adapter is loaded, and then executes the code in the code block.
+
+The code in the phase code block can invoke functions in the adapter. For example, here the swarm invokes the function _getCustomerByEmail_. This is not a function in the swarm's definition. Rather,it is a function in the CRMAdapter. The swarm invokes the _getCustomerByEmail_ function in the CRMAdapter, and passes as arguments the swarm's _email_ property and a callback function to receive the results.
+
+The results are then stored in the swarm's _customer_ property. Note the use of _me=this_ to reliably have a reference to the swarm in the closure of the callback function.
+
+
+The Mailin adapter invokes the NewCustomerSwarm like so:
+[source, javascript]
+
+----
+this.startSwarm("NewCustomerSwarm.js", "start", customer_email);
+----
