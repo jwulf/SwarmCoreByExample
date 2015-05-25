@@ -189,7 +189,7 @@ NewCustomerSwarm = {
 ----
 <1> The _vars_ section of a swarm defines its internal properties, used to store and transport information with it on the bus.
 
-The swarm's vars are accessibl in its phase code through the object _this_.
+The swarm's vars are accessible in its phase code through the object _this_.
 
 Let's have a look at the swarm constructor now.
 
